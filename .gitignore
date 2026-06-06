@@ -1,0 +1,19 @@
+# Build working directories & artifacts
+workdir/
+output/
+*.wsl
+*.wsl.SHA256
+*.wsl.bundle
+*.sha256
+*.tar
+*.tar.*
+
+# Kernel build artifacts (P4)
+kernel/build/
+kernel/release-artefacts/
+*.bzImage
+bzImage
+
+# Editor / OS cruft
+*.swp
+.DS_Store
