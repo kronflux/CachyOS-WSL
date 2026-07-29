@@ -19,6 +19,8 @@ export SOURCE_DATE_EPOCH
 echo ">>> Building CachyWSL tier=$TIER version=$IMAGE_VERSION (SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH)"
 rm -rf "$BUILDDIR"
 mkdir -p "$BUILDDIR" "$OUTPUTDIR"
+# pacman -r into an empty root needs these to exist (pacstrap normally makes them).
+mkdir -p "$BUILDDIR/var/lib/pacman" "$BUILDDIR/var/cache/pacman/pkg"
 
 # --- 1. Build pacman.conf: base + CachyOS repos for the tier.
 #     GPGDir reuses the HOST keyring (already trusts archlinux+cachyos keys) so
@@ -59,6 +61,12 @@ fakechroot -- fakeroot -- pacman -Sy -r "$BUILDDIR" \
   --hookdir "$BUILDDIR/alpm-hooks/usr/share/libalpm/hooks/" \
   "${PKGS[@]}"
 
+# Sanity guard: fakechroot/fakeroot can mask a non-zero pacman exit, so verify a
+# few critical files landed rather than trusting the exit code.
+for crit in usr/lib/libc.so.6 usr/bin/bash usr/bin/pacman usr/bin/fish usr/bin/sudo; do
+  [ -e "$BUILDDIR/$crit" ] || { echo "error: missing critical file '$crit' — package install incomplete" >&2; exit 1; }
+done
+
 # --- 4. Overlay rootfs/ and wire os-release.
 cp --recursive --preserve=timestamps "$ROOT_DIR/rootfs/." "$BUILDDIR/"
 install -Dm0755 "$SCRIPT_DIR/lib/locale-map.sh" "$BUILDDIR/usr/lib/wsl/locale-map.sh"
@@ -70,7 +78,16 @@ ln -sf /usr/lib/os-release "$BUILDDIR/etc/os-release"
 run_chroot() { fakechroot -- fakeroot -- chroot "$BUILDDIR" "$@"; }
 run_chroot /usr/bin/update-ca-trust || true
 run_chroot /usr/bin/systemd-sysusers || true
-run_chroot /usr/share/libalpm/scripts/cachyos-branding || true
+# CachyOS branding: the upstream script seds /etc/os-release (breaking our symlink
+# into a regular file). Run it, then promote the branded content to the canonical
+# /usr/lib/os-release and restore /etc/os-release as a symlink so both agree.
+run_chroot /usr/share/libalpm/scripts/cachyos-branding os-release || true
+if [ -f "$BUILDDIR/etc/os-release" ] && [ ! -L "$BUILDDIR/etc/os-release" ]; then
+  cp "$BUILDDIR/etc/os-release" "$BUILDDIR/usr/lib/os-release"
+  ln -sf /usr/lib/os-release "$BUILDDIR/etc/os-release"
+fi
+grep -q '^ID=cachyos' "$BUILDDIR/usr/lib/os-release" || \
+  { echo "error: os-release branding failed (ID not cachyos)" >&2; exit 1; }
 # Tier-appropriate makepkg.conf (fall back to v3 preset if the tier preset is absent).
 case "$TIER" in
   v3)        MPCONF="$ROOT_DIR/vendor/makepkg/x86_64_v3.conf" ;;
@@ -79,6 +96,14 @@ case "$TIER" in
   *)         MPCONF="$ROOT_DIR/vendor/makepkg/x86_64_v3.conf" ;;
 esac
 install -Dm0644 "$MPCONF" "$BUILDDIR/etc/makepkg.conf"
+# Inject CachyOS repos into the SHIPPED /etc/pacman.conf so `pacman -Syu` uses
+# them at runtime. No vendor-repoint here: the image already ships
+# /etc/pacman.d/cachyos-*-mirrorlist from the installed mirrorlist packages.
+if [ -f "$BUILDDIR/etc/pacman.conf" ]; then
+  "$SCRIPT_DIR/inject-cachyos-repos.sh" "$TIER" "$BUILDDIR/etc/pacman.conf"
+  grep -q '^\[cachyos' "$BUILDDIR/etc/pacman.conf" || \
+    { echo "error: failed to inject CachyOS repos into shipped pacman.conf" >&2; exit 1; }
+fi
 # Enable Color + ILoveCandy in the shipped pacman.conf.
 if [ -f "$BUILDDIR/etc/pacman.conf" ]; then
   sed -i -e 's/^#\?Color$/Color/' "$BUILDDIR/etc/pacman.conf"
