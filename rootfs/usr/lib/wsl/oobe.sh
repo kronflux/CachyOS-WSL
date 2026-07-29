@@ -42,7 +42,11 @@ init_keyring() {
 create_user() {
   local username=""
   while [ -z "$username" ]; do
-    read -r -p "Enter a username for your CachyOS user: " username
+    if ! read -r -p "Enter a username for your CachyOS user: " username; then
+      echo "No input received (non-interactive); skipping user creation."
+      echo "Create one later with: useradd -m -G wheel -s /usr/bin/fish <name> && passwd <name>"
+      return 0
+    fi
   done
   if ! id -u "$username" >/dev/null 2>&1; then
     useradd --create-home --uid 1000 --groups "$DEFAULT_GROUPS" \
