@@ -34,14 +34,17 @@ The build is rootless (`fakechroot`/`fakeroot`) and self-contained (vendored
 CachyOS repo transforms + mirrorlists under `vendor/`). It produces a
 deterministic, ~190 MB `.wsl`.
 
-Try it in WSL (run from a Windows terminal / PowerShell):
+Try it in WSL (run from a Windows terminal / PowerShell). Use
+`--install --from-file` (WSL ≥ 2.4.4) so the first-run OOBE fires:
 
 ```powershell
-wsl --import CachyWSL-test C:\wsl\cachywsl output\cachyos-v3-<version>.wsl
-wsl -d CachyWSL-test        # first launch runs the OOBE (creates your user, detects locale)
-# ...to remove the test install:
-wsl --unregister CachyWSL-test
+wsl --install --from-file output\cachyos-v3-<version>.wsl
+# first launch runs the OOBE (creates your user, detects locale, inits keyring)
 ```
+
+`wsl --import` also works but is the legacy path that does **not** run the OOBE —
+you'll land at a root shell; run `sudo /usr/lib/wsl/oobe.sh` yourself to finish
+setup. To remove a test install: `wsl --unregister CachyOS` (or the name you gave).
 
 ## Documentation
 
