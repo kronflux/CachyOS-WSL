@@ -17,10 +17,16 @@ for f in etc/wsl.conf etc/wsl-distribution.conf usr/lib/wsl/oobe.sh \
 done
 
 # 2. wsl.conf content.
-grep -q 'systemd=true' "$ROOT/etc/wsl.conf" 2>/dev/null \
-  && ok "wsl.conf enables systemd" || err "wsl.conf must set systemd=true"
-grep -q 'defaultName = CachyOS' "$ROOT/etc/wsl-distribution.conf" 2>/dev/null \
-  && ok "distribution defaultName is CachyOS" || err "wsl-distribution.conf defaultName"
+if grep -q 'systemd=true' "$ROOT/etc/wsl.conf" 2>/dev/null; then
+  ok "wsl.conf enables systemd"
+else
+  err "wsl.conf must set systemd=true"
+fi
+if grep -q 'defaultName = CachyOS' "$ROOT/etc/wsl-distribution.conf" 2>/dev/null; then
+  ok "distribution defaultName is CachyOS"
+else
+  err "wsl-distribution.conf defaultName"
+fi
 
 # 3. OOBE executable.
 if [ -x "$ROOT/usr/lib/wsl/oobe.sh" ]; then ok "oobe.sh executable"; else err "oobe.sh not executable"; fi
@@ -49,4 +55,8 @@ else
   ok "root has no password hash"
 fi
 
-[ "$fail" -eq 0 ] && { echo "VALIDATION OK"; exit 0; } || { echo "VALIDATION FAILED"; exit 1; }
+if [ "$fail" -eq 0 ]; then
+  echo "VALIDATION OK"; exit 0
+else
+  echo "VALIDATION FAILED"; exit 1
+fi
