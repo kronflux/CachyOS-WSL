@@ -26,4 +26,9 @@ echo ">>> OOBE and locale-map are present"
 run_chroot test -x /usr/lib/wsl/oobe.sh
 run_chroot test -f /usr/lib/wsl/locale-map.sh
 
+echo ">>> OOBE user groups exist (so first-boot useradd -G succeeds)"
+for g in sys network rfkill users video storage lp audio wheel; do
+  run_chroot grep -q "^${g}:" /etc/group
+done
+
 echo "ALL FUNCTIONAL TESTS PASSED"

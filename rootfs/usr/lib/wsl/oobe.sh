@@ -8,7 +8,7 @@ source /usr/lib/wsl/locale-map.sh 2>/dev/null || true
 DEFAULT_GROUPS="sys,network,rfkill,users,video,storage,lp,audio,wheel"
 
 echo "Welcome to CachyOS on WSL!"
-echo "Project: https://github.com/  (CachyWSL)"
+echo "A CachyOS Linux image for WSL 2 (CachyWSL)."
 echo
 
 # --- 1. Locale: detect from Windows, fall back to en_US.UTF-8 -----------------
@@ -49,7 +49,12 @@ create_user() {
     fi
   done
   if ! id -u "$username" >/dev/null 2>&1; then
-    useradd --create-home --uid 1000 --groups "$DEFAULT_GROUPS" \
+    # useradd -G is all-or-nothing; keep only groups that actually exist.
+    local groups="" g
+    for g in ${DEFAULT_GROUPS//,/ }; do
+      getent group "$g" >/dev/null 2>&1 && groups="${groups:+$groups,}$g"
+    done
+    useradd --create-home --uid 1000 ${groups:+--groups "$groups"} \
             --shell /usr/bin/fish "$username"
     echo "Set a password for $username:"
     passwd "$username"

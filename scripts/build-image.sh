@@ -78,6 +78,13 @@ ln -sf /usr/lib/os-release "$BUILDDIR/etc/os-release"
 run_chroot() { fakechroot -- fakeroot -- chroot "$BUILDDIR" "$@"; }
 run_chroot /usr/bin/update-ca-trust || true
 run_chroot /usr/bin/systemd-sysusers || true
+# systemd-sysusers creates the system groups the OOBE user is added to. Assert a
+# representative one so a swallowed failure can't ship an image where user
+# creation (useradd -G) would fail at first boot.
+grep -q '^wheel:' "$BUILDDIR/etc/group" || \
+  { echo "error: system groups missing (systemd-sysusers failed)" >&2; exit 1; }
+# Grant non-root ping now (the pacman hook only re-applies on future ping upgrades).
+run_chroot /usr/bin/setcap cap_net_raw+p /usr/bin/ping 2>/dev/null || true
 # CachyOS branding: the upstream script seds /etc/os-release (breaking our symlink
 # into a regular file). Run it, then promote the branded content to the canonical
 # /usr/lib/os-release and restore /etc/os-release as a symlink so both agree.
@@ -116,12 +123,16 @@ echo '%wheel ALL=(ALL:ALL) ALL' > "$BUILDDIR/etc/sudoers.d/10-wheel"
 chmod 0440 "$BUILDDIR/etc/sudoers.d/10-wheel"
 
 # --- 6. WSL hardening: mask conflicting units, drop WSL-irrelevant hooks.
+# Services (append .service).
 for unit in systemd-firstboot console-getty getty@ serial-getty@ \
             systemd-resolved systemd-networkd NetworkManager \
-            systemd-tmpfiles-setup systemd-tmpfiles-clean.timer tmp.mount; do
+            systemd-tmpfiles-setup systemd-tmpfiles-setup-dev systemd-tmpfiles-clean; do
   ln -sf /dev/null "$BUILDDIR/etc/systemd/system/${unit}.service" 2>/dev/null || true
 done
-ln -sf /dev/null "$BUILDDIR/etc/systemd/system/getty.target" 2>/dev/null || true
+# Non-service units (mask by exact unit name).
+for unit in getty.target systemd-tmpfiles-clean.timer tmp.mount; do
+  ln -sf /dev/null "$BUILDDIR/etc/systemd/system/${unit}" 2>/dev/null || true
+done
 rm -f "$BUILDDIR/usr/share/libalpm/hooks/cachyos-plymouth-initramfs.hook" \
       "$BUILDDIR/usr/share/libalpm/hooks/cachyos-reboot-required.hook" 2>/dev/null || true
 
@@ -137,7 +148,8 @@ fakeroot -- tar \
   --pax-option=delete=atime,delete=ctime \
   --exclude-from="$SCRIPT_DIR/exclude" \
   -C "$BUILDDIR" -c . -f "$OUT.tar"
-xz -9 -T0 -f "$OUT.tar"
+# Single-threaded xz for cross-host deterministic output (-T0 varies with core count).
+xz -9 -T1 -f "$OUT.tar"
 mv "$OUT.tar.xz" "$OUT.wsl"
 ( cd "$OUTPUTDIR" && sha256sum "$(basename "$OUT.wsl")" > "$(basename "$OUT.wsl").sha256" )
 
