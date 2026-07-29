@@ -1,0 +1,29 @@
+# --- Core system ---
+base
+sudo
+iptables-nft
+openssh
+git
+vim
+nano
+man-db
+bash-completion
+
+# --- CachyOS identity (pacman provides Architecture=auto) ---
+pacman
+cachyos-keyring
+cachyos-mirrorlist
+cachyos-v3-mirrorlist
+cachyos-hooks
+cachyos-settings
+cachyos-rate-mirrors
+
+# --- Shell experience (deps pull eza/bat/fzf/fastfetch/nerd-font/etc.) ---
+fish
+cachyos-fish-config
+zsh
+cachyos-zsh-config
+
+# --- Package tooling ---
+pacman-contrib
+pkgfile
