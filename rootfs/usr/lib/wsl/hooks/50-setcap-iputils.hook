@@ -1,0 +1,10 @@
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Target = usr/bin/ping
+
+[Action]
+Description = Restoring cap_net_raw on ping (non-root ping in WSL)...
+When = PostTransaction
+Exec = /usr/bin/setcap cap_net_raw+p /usr/bin/ping

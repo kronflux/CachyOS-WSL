@@ -4,7 +4,8 @@ A [CachyOS](https://cachyos.org/) Linux image for **WSL 2** — the official Arc
 Linux WSL build structure, adapted into a professional, well-structured CachyOS
 WSL image whose userland is equivalent to a real CachyOS terminal.
 
-> **Status:** Design phase. Implementation not yet started.
+> **Status:** Phase 1 (bootable core) implemented — builds a working v3 image.
+> v4/znver4 tiers, CI, signing, and the optional kernel come in later phases.
 
 ## What it produces
 
@@ -15,6 +16,32 @@ WSL image whose userland is equivalent to a real CachyOS terminal.
 - First-class Windows interop (interop, metadata automount, WSLg, Windows-locale
   detection).
 - Optional companion: a CachyOS-patched WSL2 kernel (later phase).
+
+## Build & try it (Phase 1)
+
+Requires a CachyOS or Arch host (WSL is fine) with the build/test toolchain:
+
+```bash
+sudo pacman -S --needed bats fakechroot arch-install-scripts shellcheck shfmt jq
+git submodule update --init            # bats test helpers
+
+make unit                              # run the bats unit suites
+make build TIER=v3                     # -> output/cachyos-v3-<version>.wsl (+ .sha256)
+make test  TIER=v3                     # functional checks against the built tree
+```
+
+The build is rootless (`fakechroot`/`fakeroot`) and self-contained (vendored
+CachyOS repo transforms + mirrorlists under `vendor/`). It produces a
+deterministic, ~190 MB `.wsl`.
+
+Try it in WSL (run from a Windows terminal / PowerShell):
+
+```powershell
+wsl --import CachyWSL-test C:\wsl\cachywsl output\cachyos-v3-<version>.wsl
+wsl -d CachyWSL-test        # first launch runs the OOBE (creates your user, detects locale)
+# ...to remove the test install:
+wsl --unregister CachyWSL-test
+```
 
 ## Documentation
 
