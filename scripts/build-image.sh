@@ -121,16 +121,24 @@ fi
 install -d -m0750 "$BUILDDIR/etc/sudoers.d"
 echo '%wheel ALL=(ALL:ALL) ALL' > "$BUILDDIR/etc/sudoers.d/10-wheel"
 chmod 0440 "$BUILDDIR/etc/sudoers.d/10-wheel"
+# Pre-generate a default UTF-8 locale so the image is warning-free even when OOBE
+# (which detects the Windows locale) does not run, e.g. under `wsl --import`.
+# locale-gen's archive build fails under fakechroot; --no-archive writes a plain
+# per-locale directory that glibc reads directly.
+sed -i 's/^#\(en_US.UTF-8 UTF-8\)/\1/' "$BUILDDIR/etc/locale.gen"
+run_chroot /usr/bin/localedef --no-archive -i en_US -f UTF-8 en_US.UTF-8 || true
+fakechroot -- fakeroot -- chroot "$BUILDDIR" /usr/bin/locale -a 2>/dev/null | grep -qi '^en_US.utf8$' || \
+  { echo "error: en_US.UTF-8 locale not generated" >&2; exit 1; }
 
 # --- 6. WSL hardening: mask conflicting units, drop WSL-irrelevant hooks.
-# Services (append .service).
-for unit in systemd-firstboot console-getty getty@ serial-getty@ \
-            systemd-resolved systemd-networkd NetworkManager \
-            systemd-tmpfiles-setup systemd-tmpfiles-setup-dev systemd-tmpfiles-clean; do
+# Match the OFFICIAL Arch WSL set: only the getty/firstboot units (Hyper-V
+# shared-TTY fix, WSL#13595). Do NOT mask tmpfiles/tmp.mount/networkd/resolved —
+# masking systemd-tmpfiles-setup/tmp.mount breaks /run/user creation and the
+# systemd user session on first boot.
+for unit in systemd-firstboot console-getty; do
   ln -sf /dev/null "$BUILDDIR/etc/systemd/system/${unit}.service" 2>/dev/null || true
 done
-# Non-service units (mask by exact unit name).
-for unit in getty.target systemd-tmpfiles-clean.timer tmp.mount; do
+for unit in getty@.service serial-getty@.service getty.target; do
   ln -sf /dev/null "$BUILDDIR/etc/systemd/system/${unit}" 2>/dev/null || true
 done
 rm -f "$BUILDDIR/usr/share/libalpm/hooks/cachyos-plymouth-initramfs.hook" \
