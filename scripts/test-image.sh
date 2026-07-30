@@ -3,7 +3,6 @@
 # Usage: test-image.sh <TIER>
 set -euo pipefail
 TIER="${1:-v3}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKDIR="${CACHYWSL_WORKDIR:-/var/tmp/cachywsl}"
 BUILDDIR="$WORKDIR/build-$TIER"
 
