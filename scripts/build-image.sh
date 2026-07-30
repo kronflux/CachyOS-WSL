@@ -9,7 +9,10 @@ IMAGE_VERSION="${2:?usage: build-image.sh <tier> <image_version>}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-WORKDIR="$ROOT_DIR/workdir"
+# Build on a NATIVE filesystem. /mnt/c (DrvFs/9p) cannot store Unix mode or
+# setuid bits, so building there produces a 0777, no-setuid (broken sudo,
+# world-writable) image. Override with CACHYWSL_WORKDIR if /var/tmp is unsuitable.
+WORKDIR="${CACHYWSL_WORKDIR:-/var/tmp/cachywsl}"
 BUILDDIR="$WORKDIR/build-$TIER"
 OUTPUTDIR="$ROOT_DIR/output"
 
