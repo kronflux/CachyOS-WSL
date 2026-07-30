@@ -17,3 +17,6 @@ bzImage
 # Editor / OS cruft
 *.swp
 .DS_Store
+
+# AI assistant artifacts
+known-issues.md
