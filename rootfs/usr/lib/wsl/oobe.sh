@@ -13,12 +13,20 @@ echo
 
 # --- 1. Locale: detect from Windows, fall back to en_US.UTF-8 -----------------
 configure_locale() {
-  local culture="en-US" mapped
-  local ps
+  local culture="" mapped ps
   ps="$(command -v powershell.exe || true)"
   if [ -n "$ps" ]; then
-    culture="$("$ps" -NoProfile -Command '(Get-Culture).Name' 2>/dev/null || echo en-US)"
+    # WSL's Windows-binary interop (binfmt_misc) may not be registered yet this
+    # early in first boot, so powershell.exe can fail with "cannot execute binary
+    # file". Retry briefly to let interop come up before falling back to en_US.
+    for _ in 1 2 3 4 5; do
+      culture="$("$ps" -NoProfile -NonInteractive -Command '(Get-Culture).Name' 2>/dev/null | tr -d '\r\n')"
+      [[ "$culture" == *-* ]] && break
+      culture=""
+      sleep 1
+    done
   fi
+  [ -n "$culture" ] || culture="en-US"
   if declare -F map_windows_locale >/dev/null; then
     mapped="$(map_windows_locale "$culture")"
   else
