@@ -4,7 +4,8 @@
 set -euo pipefail
 TIER="${1:-v3}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILDDIR="$SCRIPT_DIR/../workdir/build-$TIER"
+WORKDIR="${CACHYWSL_WORKDIR:-/var/tmp/cachywsl}"
+BUILDDIR="$WORKDIR/build-$TIER"
 
 [ -d "$BUILDDIR" ] || { echo "no build dir: $BUILDDIR (run build first)"; exit 1; }
 run_chroot() { fakechroot -- fakeroot -- chroot "$BUILDDIR" "$@"; }
