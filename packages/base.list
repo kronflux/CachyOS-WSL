@@ -1,16 +1,28 @@
 # --- Core system ---
 base
+base-devel
 sudo
 iptables-nft
 openssh
 git
 vim
 nano
+nano-syntax-highlighting
 man-db
+man-pages
+less
+diffutils
+e2fsprogs
+perl
+python
 bash-completion
+mlocate
+pv
+wipe
 
 # --- CachyOS identity (pacman provides Architecture=auto) ---
 pacman
+archlinux-keyring
 cachyos-keyring
 cachyos-mirrorlist
 cachyos-v3-mirrorlist
@@ -24,6 +36,29 @@ cachyos-fish-config
 zsh
 cachyos-zsh-config
 
+# --- CLI apps ---
+mc
+tmux
+inxi
+irssi
+lynx
+ttf-fira-code
+
+# --- Network CLI tools ---
+wget
+rsync
+nmap
+tcpdump
+bind-tools
+net-tools
+inetutils
+gnu-netcat
+whois
+lftp
+
 # --- Package tooling ---
 pacman-contrib
 pkgfile
+paru
+reflector
+downgrade
