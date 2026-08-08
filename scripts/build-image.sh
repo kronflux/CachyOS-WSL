@@ -144,6 +144,18 @@ done
 for unit in getty@.service serial-getty@.service getty.target; do
   ln -sf /dev/null "$BUILDDIR/etc/systemd/system/${unit}" 2>/dev/null || true
 done
+# --- cachyos-settings audit: neutralize WSL-pointless units it ships.
+#   zram        -> WSL manages its own swap; no zram device wanted
+#   pci-latency -> no PCI bus in WSL
+#   iw-regdomain-> no wireless in WSL
+for unit in pci-latency.service cachyos-iw-set-regdomain.service cachyos-iw-set-regdomain.path; do
+  ln -sf /dev/null "$BUILDDIR/etc/systemd/system/${unit}" 2>/dev/null || true
+done
+rm -f "$BUILDDIR/usr/lib/systemd/zram-generator.conf" \
+      "$BUILDDIR/etc/systemd/zram-generator.conf" 2>/dev/null || true
+ln -sf /dev/null "$BUILDDIR/etc/systemd/system/systemd-zram-setup@zram0.service" 2>/dev/null || true
+# Keep the perf tuning: 70-cachyos-settings.conf (sysctl), thp*.conf (tmpfiles),
+# systemd limits/timeouts, journald size — all harmless or beneficial in WSL.
 rm -f "$BUILDDIR/usr/share/libalpm/hooks/cachyos-plymouth-initramfs.hook" \
       "$BUILDDIR/usr/share/libalpm/hooks/cachyos-reboot-required.hook" 2>/dev/null || true
 

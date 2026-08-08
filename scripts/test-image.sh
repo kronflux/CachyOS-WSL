@@ -31,4 +31,12 @@ for g in sys network rfkill users video storage lp audio wheel; do
   run_chroot grep -q "^${g}:" /etc/group
 done
 
+echo ">>> cachyos-settings WSL-pointless units are neutralized"
+for u in pci-latency.service cachyos-iw-set-regdomain.service cachyos-iw-set-regdomain.path; do
+  [ "$(readlink "$BUILDDIR/etc/systemd/system/$u" 2>/dev/null)" = /dev/null ] \
+    || { echo "FAIL: $u not masked"; exit 1; }
+done
+echo ">>> cachyos-settings perf tuning retained"
+run_chroot test -f /usr/lib/sysctl.d/70-cachyos-settings.conf
+
 echo "ALL FUNCTIONAL TESTS PASSED"
