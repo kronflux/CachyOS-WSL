@@ -24,11 +24,11 @@ rm -rf "$BUILDDIR"
 mkdir -p "$BUILDDIR" "$OUTPUTDIR"
 # pacman -r into an empty root needs these to exist (pacstrap normally makes them).
 mkdir -p "$BUILDDIR/var/lib/pacman" "$BUILDDIR/var/cache/pacman/pkg"
-# Dedicated build package cache (persists across tier builds), isolated from the
-# HOST cache — a corrupted package in /var/cache/pacman/pkg would otherwise fail
-# signature verification and abort the build.
-PKGCACHE="$WORKDIR/pkgcache"
-mkdir -p "$PKGCACHE"
+# Fresh per-build package cache inside the (wiped-each-build) BUILDDIR — isolated
+# from the HOST cache AND from other tier builds. A corrupted package cached from
+# the host or a prior build would otherwise fail signature verification and abort
+# (pacman does not retry another mirror on a bad signature).
+PKGCACHE="$BUILDDIR/var/cache/pacman/pkg"
 
 # --- 1. Build pacman.conf: base + CachyOS repos for the tier.
 #     GPGDir reuses the HOST keyring (already trusts archlinux+cachyos keys) so

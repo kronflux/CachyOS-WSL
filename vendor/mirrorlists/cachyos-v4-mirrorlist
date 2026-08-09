@@ -4,7 +4,6 @@
 ####                                              ####
 ######################################################
 ## CDN77 (World Wide Datacenters)
-Server = https://cdn77.cachyos.org/repo/$arch_v4/$repo
 ## Rerouted to mirror
 # Server = https://cdn.cachyos.org/repo/$arch_v4/$repo
 ## Germany, disabled due Netcup issues:
