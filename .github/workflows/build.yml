@@ -1,0 +1,51 @@
+name: build
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/**", "scripts/**", "rootfs/**", "packages/**", "vendor/**", "Makefile"]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+      options: --privileged
+    strategy:
+      fail-fast: false
+      matrix:
+        tier: [v3, v4, znver4]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install build tooling
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel git fakechroot fakeroot arch-install-scripts jq xz bats
+      - name: Trust CachyOS signing key
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com
+          pacman-key --lsign-key F3B607488DB35A47
+      - name: Verify vendored assets
+        run: ./scripts/verify-vendor.sh
+      - name: Build ${{ matrix.tier }}
+        env:
+          CACHYWSL_WORKDIR: /var/tmp/cachywsl
+        run: make build TIER=${{ matrix.tier }} IMAGE_VERSION="$(date -u +%Y.%m.%d).${{ github.run_number }}"
+      - name: Functional test ${{ matrix.tier }}
+        env:
+          CACHYWSL_WORKDIR: /var/tmp/cachywsl
+        run: make test TIER=${{ matrix.tier }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cachyos-${{ matrix.tier }}
+          path: |
+            output/cachyos-${{ matrix.tier }}-*.wsl
+            output/cachyos-${{ matrix.tier }}-*.wsl.sha256
+          if-no-files-found: error
