@@ -54,8 +54,39 @@ if (-not (Test-Path -LiteralPath $templatePath)) {
     Write-Error "Terminal profile template not found: $templatePath"
     exit 1
 }
+# Windows Terminal's settings.json is JSONC (it ships with `//` and `/* */`
+# comments). ConvertFrom-Json on PS 5.1 rejects comments, so strip them first
+# with a scanner that ignores comment markers appearing inside strings.
+function Remove-JsonComment {
+    param([string]$Text)
+    $out = New-Object System.Text.StringBuilder
+    $inStr = $false; $esc = $false; $i = 0; $n = $Text.Length
+    while ($i -lt $n) {
+        $c = $Text[$i]
+        if ($inStr) {
+            [void]$out.Append($c)
+            if ($esc)              { $esc = $false }
+            elseif ($c -eq '\')    { $esc = $true }
+            elseif ($c -eq '"')    { $inStr = $false }
+            $i++; continue
+        }
+        if ($c -eq '"') { $inStr = $true; [void]$out.Append($c); $i++; continue }
+        if ($c -eq '/' -and ($i + 1) -lt $n -and $Text[$i + 1] -eq '/') {
+            while ($i -lt $n -and $Text[$i] -ne "`n") { $i++ }   # line comment
+            continue
+        }
+        if ($c -eq '/' -and ($i + 1) -lt $n -and $Text[$i + 1] -eq '*') {
+            $i += 2                                              # block comment
+            while (($i + 1) -lt $n -and -not ($Text[$i] -eq '*' -and $Text[$i + 1] -eq '/')) { $i++ }
+            $i += 2; continue
+        }
+        [void]$out.Append($c); $i++
+    }
+    $out.ToString()
+}
+
 $template = Get-Content -LiteralPath $templatePath -Raw | ConvertFrom-Json
-$json     = Get-Content -LiteralPath $settings.FullName -Raw | ConvertFrom-Json
+$json     = ConvertFrom-Json (Remove-JsonComment (Get-Content -LiteralPath $settings.FullName -Raw))
 
 $changes = New-Object System.Collections.Generic.List[string]
 

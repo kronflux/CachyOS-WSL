@@ -8,9 +8,10 @@ on:
         description: "Release tag (YYYY.MM.DD.N)"
         required: true
 
-permissions:
-  contents: write
-  id-token: write
+# Least privilege: only the release job signs + publishes. The reusable build
+# job (which executes target packages in a --privileged container) must NOT
+# inherit contents:write / id-token:write — it declares contents:read itself.
+permissions: {}
 
 jobs:
   build:
@@ -18,12 +19,24 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Resolve tag
         id: tag
-        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+        env:
+          RAW_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          # Validate before use — the tag reaches shell steps below; a ref name
+          # or dispatch input containing shell metacharacters must not execute.
+          if [[ ! "$RAW_TAG" =~ ^20[0-9]{2}\.[0-9]{2}\.[0-9]{2}\.[0-9]+$ ]]; then
+            echo "::error::Invalid release tag '$RAW_TAG' (expected YYYY.MM.DD.N)"
+            exit 1
+          fi
+          printf 'tag=%s\n' "$RAW_TAG" >> "$GITHUB_OUTPUT"
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -38,7 +51,9 @@ jobs:
             cosign sign-blob --yes --bundle "$f.bundle" "$f"
           done
       - name: Generate DistributionInfo.json
-        run: ./scripts/gen-distribution-info.sh "${{ steps.tag.outputs.tag }}" dist > dist/DistributionInfo.json
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: ./scripts/gen-distribution-info.sh "$TAG" dist > dist/DistributionInfo.json
       - name: Release body
         run: |
           {

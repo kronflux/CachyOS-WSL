@@ -6,6 +6,11 @@ on:
   workflow_dispatch:
   workflow_call:
 
+# Build executes target packages in a --privileged container; grant it only
+# read access so a reusable-workflow caller cannot lend it write/id-token.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
