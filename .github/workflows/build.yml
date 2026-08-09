@@ -1,0 +1,61 @@
+name: build
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/**", "scripts/**", "rootfs/**", "packages/**", "vendor/**", "Makefile"]
+  workflow_dispatch:
+  workflow_call:
+
+# Build executes target packages in a --privileged container; grant it only
+# read access so a reusable-workflow caller cannot lend it write/id-token.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      # CachyOS image: its patched pacman accepts the x86_64_v3/v4 hwcaps repos
+      # (stock Arch pacman rejects them: "package architecture is not valid").
+      image: cachyos/cachyos:latest
+      options: --privileged
+    strategy:
+      fail-fast: false
+      matrix:
+        # znver4 is intentionally NOT built in CI: the build executes
+        # target-optimized binaries in the chroot (systemd-sysusers, cachyos-branding,
+        # localedef), and znver4 (Zen4) binaries SIGILL on GitHub's non-Zen4 runners.
+        # Build znver4 on a Zen4 host: `make build TIER=znver4` (or a self-hosted
+        # Zen4 runner). v3 and v4 run fine on GitHub-hosted (AVX-512) runners.
+        tier: [v3, v4]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install build tooling
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel git fakechroot fakeroot arch-install-scripts jq xz bats
+      - name: Ensure pacman keyring
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux cachyos
+      - name: Verify vendored assets
+        run: ./scripts/verify-vendor.sh
+      - name: Build ${{ matrix.tier }}
+        env:
+          CACHYWSL_WORKDIR: /var/tmp/cachywsl
+        run: make build TIER=${{ matrix.tier }} IMAGE_VERSION="$(date -u +%Y.%m.%d).${{ github.run_number }}"
+      - name: Functional test ${{ matrix.tier }}
+        env:
+          CACHYWSL_WORKDIR: /var/tmp/cachywsl
+        run: make test TIER=${{ matrix.tier }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cachyos-${{ matrix.tier }}
+          path: |
+            output/cachyos-${{ matrix.tier }}-*.wsl
+            output/cachyos-${{ matrix.tier }}-*.wsl.sha256
+          if-no-files-found: error

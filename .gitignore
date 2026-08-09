@@ -20,3 +20,6 @@ bzImage
 
 # AI assistant artifacts
 known-issues.md
+
+# Machine-local superpowers config
+.superpowers/
