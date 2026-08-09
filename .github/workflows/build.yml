@@ -17,7 +17,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        tier: [v3, v4, znver4]
+        # znver4 is intentionally NOT built in CI: the build executes
+        # target-optimized binaries in the chroot (systemd-sysusers, cachyos-branding,
+        # localedef), and znver4 (Zen4) binaries SIGILL on GitHub's non-Zen4 runners.
+        # Build znver4 on a Zen4 host: `make build TIER=znver4` (or a self-hosted
+        # Zen4 runner). v3 and v4 run fine on GitHub-hosted (AVX-512) runners.
+        tier: [v3, v4]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
