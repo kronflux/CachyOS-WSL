@@ -17,6 +17,32 @@ WSL image whose userland is equivalent to a real CachyOS terminal.
   detection).
 - Optional companion: a CachyOS-patched WSL2 kernel (later phase).
 
+## Releases & install
+
+CachyWSL publishes three CPU-optimized tiers per release (GitHub Releases):
+
+| Tier | Distro name | For |
+|------|-------------|-----|
+| x86-64-v3 (default) | `CachyOS` | any modern x86-64 CPU (Haswell/Zen1+) |
+| x86-64-v4 | `CachyOS_v4` | AVX-512 CPUs |
+| Zen4 | `CachyOS_Zen4` | AMD Zen 4/5 |
+
+Install a tier from a Release (WSL 2.4.4+):
+
+```powershell
+wsl --install --from-file cachyos-v3-<version>.wsl
+```
+
+**Verify the signature** (Cosign keyless):
+
+```bash
+cosign verify-blob cachyos-v3-<version>.wsl --bundle cachyos-v3-<version>.wsl.bundle \
+  --certificate-identity-regexp 'https://github.com/kronflux/CachyOS-WSL/.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+For **local testing before a release** (register a locally-built `.wsl`), see [`windows/`](windows/) — an elevated PowerShell registry-override helper.
+
 ## Build & try it (Phase 1)
 
 Requires a CachyOS or Arch host (WSL is fine) with the build/test toolchain:

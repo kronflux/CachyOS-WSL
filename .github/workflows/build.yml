@@ -10,7 +10,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: archlinux:latest
+      # CachyOS image: its patched pacman accepts the x86_64_v3/v4 hwcaps repos
+      # (stock Arch pacman rejects them: "package architecture is not valid").
+      image: cachyos/cachyos:latest
       options: --privileged
     strategy:
       fail-fast: false
@@ -25,12 +27,10 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             base-devel git fakechroot fakeroot arch-install-scripts jq xz bats
-      - name: Trust CachyOS signing key
+      - name: Ensure pacman keyring
         run: |
           pacman-key --init
-          pacman-key --populate archlinux
-          pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com
-          pacman-key --lsign-key F3B607488DB35A47
+          pacman-key --populate archlinux cachyos
       - name: Verify vendored assets
         run: ./scripts/verify-vendor.sh
       - name: Build ${{ matrix.tier }}
