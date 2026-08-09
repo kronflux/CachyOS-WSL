@@ -16,7 +16,7 @@ e2fsprogs
 perl
 python
 bash-completion
-mlocate
+plocate
 pv
 wipe
 
@@ -49,10 +49,10 @@ wget
 rsync
 nmap
 tcpdump
-bind-tools
+bind
 net-tools
 inetutils
-gnu-netcat
+openbsd-netcat
 whois
 lftp
 

@@ -18,9 +18,9 @@ load helpers
 
 @test "base.list adds the Phase 2 parity packages" {
   for p in base-devel archlinux-keyring man-pages less diffutils e2fsprogs perl python \
-           mlocate pv wipe paru reflector downgrade nano-syntax-highlighting mc tmux \
-           inxi irssi lynx wget rsync nmap tcpdump bind-tools net-tools inetutils \
-           gnu-netcat whois lftp ttf-fira-code; do
+           plocate pv wipe paru reflector downgrade nano-syntax-highlighting mc tmux \
+           inxi irssi lynx wget rsync nmap tcpdump bind net-tools inetutils \
+           openbsd-netcat whois lftp ttf-fira-code; do
     run bash -c "grep -vE '^\s*(#|\$)' '$REPO_ROOT/packages/base.list' | grep -qx '$p'"
     assert_success
   done
