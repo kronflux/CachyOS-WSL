@@ -53,6 +53,12 @@ EOF
 # Point the injected [cachyos*] Include paths at our vendored, self-contained
 # mirrorlists (host may not carry every tier's mirrorlist).
 sed -i "s#/etc/pacman.d/cachyos-#$ROOT_DIR/vendor/mirrorlists/cachyos-#g" "$BUILD_PACMAN_CONF"
+# Cross-build: accept every CachyOS hwcaps arch regardless of the BUILD host CPU.
+# The injected `Architecture = auto` detects the builder's CPU, so on a host without
+# AVX-512 (e.g. GitHub-hosted runners) it rejects x86_64_v4 packages ("package
+# architecture is not valid"). We only extract packages into the image tree, never
+# run them on the builder, so an explicit superset is safe.
+sed -i 's/^Architecture = .*/Architecture = x86_64 x86_64_v3 x86_64_v4 x86_64_znver4/' "$BUILD_PACMAN_CONF"
 
 # --- 2. Neutralize ALPM hooks during bootstrap (target-absolute path prefixed).
 mkdir -p "$BUILDDIR/alpm-hooks/usr/share/libalpm/hooks"
