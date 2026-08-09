@@ -12,7 +12,10 @@ ok()  { echo "PASS: $*"; }
 
 # 1. Required files exist.
 for f in etc/wsl.conf etc/wsl-distribution.conf usr/lib/wsl/oobe.sh \
-         usr/lib/wsl/terminal-profile.json etc/passwd etc/shadow; do
+         usr/lib/wsl/terminal-profile.json etc/passwd etc/shadow \
+         etc/binfmt.d/WSLInterop.conf \
+         etc/systemd/system/user@.service.d/50-wsl-retry.conf \
+         etc/makepkg.conf; do
   if [ -e "$ROOT/$f" ]; then ok "exists: $f"; else err "missing: $f"; fi
 done
 

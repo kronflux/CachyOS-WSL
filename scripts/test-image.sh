@@ -31,4 +31,19 @@ for g in sys network rfkill users video storage lp audio wheel; do
   run_chroot grep -q "^${g}:" /etc/group
 done
 
+echo ">>> cachyos-settings WSL-pointless units still ship upstream AND are masked"
+for u in pci-latency.service cachyos-iw-set-regdomain.service cachyos-iw-set-regdomain.path; do
+  # Assert the real unit exists (else upstream renamed it -> our mask is stale and
+  # the real unit ships un-neutralized). Only then is the /dev/null mask meaningful.
+  run_chroot test -e "/usr/lib/systemd/system/$u" \
+    || { echo "FAIL: $u no longer shipped by cachyos-settings (renamed?) — mask is stale"; exit 1; }
+  [ "$(readlink "$BUILDDIR/etc/systemd/system/$u" 2>/dev/null)" = /dev/null ] \
+    || { echo "FAIL: $u not masked"; exit 1; }
+done
+echo ">>> zram neutralized (no zram-generator config remains)"
+run_chroot sh -c '[ ! -e /usr/lib/systemd/zram-generator.conf ] && [ ! -e /etc/systemd/zram-generator.conf ]' \
+  || { echo "FAIL: zram-generator config still present"; exit 1; }
+echo ">>> cachyos-settings perf tuning retained"
+run_chroot test -f /usr/lib/sysctl.d/70-cachyos-settings.conf
+
 echo "ALL FUNCTIONAL TESTS PASSED"

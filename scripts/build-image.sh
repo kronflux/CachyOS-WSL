@@ -24,6 +24,11 @@ rm -rf "$BUILDDIR"
 mkdir -p "$BUILDDIR" "$OUTPUTDIR"
 # pacman -r into an empty root needs these to exist (pacstrap normally makes them).
 mkdir -p "$BUILDDIR/var/lib/pacman" "$BUILDDIR/var/cache/pacman/pkg"
+# Fresh per-build package cache inside the (wiped-each-build) BUILDDIR — isolated
+# from the HOST cache AND from other tier builds. A corrupted package cached from
+# the host or a prior build would otherwise fail signature verification and abort
+# (pacman does not retry another mirror on a bad signature).
+PKGCACHE="$BUILDDIR/var/cache/pacman/pkg"
 
 # --- 1. Build pacman.conf: base + CachyOS repos for the tier.
 #     GPGDir reuses the HOST keyring (already trusts archlinux+cachyos keys) so
@@ -59,6 +64,7 @@ mapfile -t PKGS < <(grep -vE '^\s*(#|$)' "$ROOT_DIR/packages/base.list")
 echo ">>> Installing ${#PKGS[@]} packages..."
 fakechroot -- fakeroot -- pacman -Sy -r "$BUILDDIR" \
   --config "$BUILD_PACMAN_CONF" \
+  --cachedir "$PKGCACHE" \
   --disable-sandbox-filesystem \
   --noconfirm --noscriptlet \
   --hookdir "$BUILDDIR/alpm-hooks/usr/share/libalpm/hooks/" \
@@ -144,6 +150,18 @@ done
 for unit in getty@.service serial-getty@.service getty.target; do
   ln -sf /dev/null "$BUILDDIR/etc/systemd/system/${unit}" 2>/dev/null || true
 done
+# --- cachyos-settings audit: neutralize WSL-pointless units it ships.
+#   zram        -> WSL manages its own swap; no zram device wanted
+#   pci-latency -> no PCI bus in WSL
+#   iw-regdomain-> no wireless in WSL
+for unit in pci-latency.service cachyos-iw-set-regdomain.service cachyos-iw-set-regdomain.path; do
+  ln -sf /dev/null "$BUILDDIR/etc/systemd/system/${unit}" 2>/dev/null || true
+done
+rm -f "$BUILDDIR/usr/lib/systemd/zram-generator.conf" \
+      "$BUILDDIR/etc/systemd/zram-generator.conf" 2>/dev/null || true
+ln -sf /dev/null "$BUILDDIR/etc/systemd/system/systemd-zram-setup@zram0.service" 2>/dev/null || true
+# Keep the perf tuning: 70-cachyos-settings.conf (sysctl), thp*.conf (tmpfiles),
+# systemd limits/timeouts, journald size — all harmless or beneficial in WSL.
 rm -f "$BUILDDIR/usr/share/libalpm/hooks/cachyos-plymouth-initramfs.hook" \
       "$BUILDDIR/usr/share/libalpm/hooks/cachyos-reboot-required.hook" 2>/dev/null || true
 
