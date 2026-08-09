@@ -4,8 +4,9 @@ A [CachyOS](https://cachyos.org/) Linux image for **WSL 2** — the official Arc
 Linux WSL build structure, adapted into a professional, well-structured CachyOS
 WSL image whose userland is equivalent to a real CachyOS terminal.
 
-> **Status:** Phase 1 (bootable core) implemented — builds a working v3 image.
-> v4/znver4 tiers, CI, signing, and the optional kernel come in later phases.
+> **Status:** Phases 1–3 complete — multi-tier CachyOS terminal userland with
+> signed, reproducible `.wsl` images published via CI (Cosign keyless). The
+> optional CachyOS-patched kernel is a later phase.
 
 ## What it produces
 
@@ -19,13 +20,18 @@ WSL image whose userland is equivalent to a real CachyOS terminal.
 
 ## Releases & install
 
-CachyWSL publishes three CPU-optimized tiers per release (GitHub Releases):
+CachyWSL ships CPU-optimized tiers per release (GitHub Releases):
 
-| Tier | Distro name | For |
-|------|-------------|-----|
-| x86-64-v3 (default) | `CachyOS` | any modern x86-64 CPU (Haswell/Zen1+) |
-| x86-64-v4 | `CachyOS_v4` | AVX-512 CPUs |
-| Zen4 | `CachyOS_Zen4` | AMD Zen 4/5 |
+| Tier | Distro name | For | Built by |
+|------|-------------|-----|----------|
+| x86-64-v3 (default) | `CachyOS` | any modern x86-64 CPU (Haswell/Zen1+) | CI (GitHub-hosted) |
+| x86-64-v4 | `CachyOS_v4` | AVX-512 CPUs | CI (GitHub-hosted) |
+| Zen4 | `CachyOS_Zen4` | AMD Zen 4/5 | Zen4 host (see below) |
+
+> **znver4 is not built in CI.** The build executes target-optimized binaries in
+> the chroot, and Zen4 code SIGILLs on GitHub's non-Zen4 runners. Build it on a
+> Zen4 machine with `make build TIER=znver4` (or a self-hosted Zen4 runner) and
+> attach the result to the release. v3 and v4 build on any GitHub-hosted runner.
 
 Install a tier from a Release (WSL 2.4.4+):
 
