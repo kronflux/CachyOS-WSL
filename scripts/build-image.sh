@@ -24,6 +24,11 @@ rm -rf "$BUILDDIR"
 mkdir -p "$BUILDDIR" "$OUTPUTDIR"
 # pacman -r into an empty root needs these to exist (pacstrap normally makes them).
 mkdir -p "$BUILDDIR/var/lib/pacman" "$BUILDDIR/var/cache/pacman/pkg"
+# Dedicated build package cache (persists across tier builds), isolated from the
+# HOST cache — a corrupted package in /var/cache/pacman/pkg would otherwise fail
+# signature verification and abort the build.
+PKGCACHE="$WORKDIR/pkgcache"
+mkdir -p "$PKGCACHE"
 
 # --- 1. Build pacman.conf: base + CachyOS repos for the tier.
 #     GPGDir reuses the HOST keyring (already trusts archlinux+cachyos keys) so
@@ -59,6 +64,7 @@ mapfile -t PKGS < <(grep -vE '^\s*(#|$)' "$ROOT_DIR/packages/base.list")
 echo ">>> Installing ${#PKGS[@]} packages..."
 fakechroot -- fakeroot -- pacman -Sy -r "$BUILDDIR" \
   --config "$BUILD_PACMAN_CONF" \
+  --cachedir "$PKGCACHE" \
   --disable-sandbox-filesystem \
   --noconfirm --noscriptlet \
   --hookdir "$BUILDDIR/alpm-hooks/usr/share/libalpm/hooks/" \
