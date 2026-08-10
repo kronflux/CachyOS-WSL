@@ -104,6 +104,7 @@ fi
 # --- 4. Overlay rootfs/ and wire os-release.
 cp --recursive --preserve=timestamps "$ROOT_DIR/rootfs/." "$BUILDDIR/"
 install -Dm0755 "$SCRIPT_DIR/lib/locale-map.sh" "$BUILDDIR/usr/lib/wsl/locale-map.sh"
+install -Dm0644 "$SCRIPT_DIR/lib/oobe-lib.sh" "$BUILDDIR/usr/lib/wsl/oobe-lib.sh"
 install -Dm0644 "$ROOT_DIR/rootfs/usr/lib/wsl/hooks/50-setcap-iputils.hook" \
   "$BUILDDIR/etc/pacman.d/hooks/50-setcap-iputils.hook"
 ln -sf /usr/lib/os-release "$BUILDDIR/etc/os-release"
@@ -165,11 +166,42 @@ run_chroot /usr/bin/localedef --no-archive -i en_US -f UTF-8 en_US.UTF-8 || true
 fakechroot -- fakeroot -- chroot "$BUILDDIR" /usr/bin/locale -a 2>/dev/null | grep -qi '^en_US.utf8$' || \
   { echo "error: en_US.UTF-8 locale not generated" >&2; exit 1; }
 
-# --- 6. Cleanup for reproducible packaging.
+# --- 6. WSL hardening: mask conflicting units, drop WSL-irrelevant hooks.
+# Match the official Arch WSL set: only the getty/firstboot units (Hyper-V
+# shared-TTY fix, WSL#13595). Do NOT mask tmpfiles/tmp.mount/networkd/resolved —
+# masking systemd-tmpfiles-setup/tmp.mount breaks /run/user creation and the
+# systemd user session on first boot.
+for unit in systemd-firstboot console-getty; do
+  ln -sf /dev/null "$BUILDDIR/etc/systemd/system/${unit}.service" 2>/dev/null || true
+done
+for unit in getty@.service serial-getty@.service getty.target; do
+  ln -sf /dev/null "$BUILDDIR/etc/systemd/system/${unit}" 2>/dev/null || true
+done
+# --- cachyos-settings audit: neutralize WSL-pointless units it ships.
+#   zram        -> WSL manages its own swap; no zram device wanted
+#   pci-latency -> no PCI bus in WSL
+#   iw-regdomain-> no wireless in WSL
+for unit in pci-latency.service cachyos-iw-set-regdomain.service cachyos-iw-set-regdomain.path; do
+  ln -sf /dev/null "$BUILDDIR/etc/systemd/system/${unit}" 2>/dev/null || true
+done
+rm -f "$BUILDDIR/usr/lib/systemd/zram-generator.conf" \
+      "$BUILDDIR/etc/systemd/zram-generator.conf" 2>/dev/null || true
+ln -sf /dev/null "$BUILDDIR/etc/systemd/system/systemd-zram-setup@zram0.service" 2>/dev/null || true
+# Keep the perf tuning: 70-cachyos-settings.conf (sysctl), thp*.conf (tmpfiles),
+# systemd limits/timeouts, journald size — all harmless or beneficial in WSL.
+rm -f "$BUILDDIR/usr/share/libalpm/hooks/cachyos-plymouth-initramfs.hook" \
+      "$BUILDDIR/usr/share/libalpm/hooks/cachyos-reboot-required.hook" 2>/dev/null || true
+# cachy-update ships a desktop systray applet + update-check timer; keep only the
+# CLI (arch-update) by dropping the tray autostart and masking the user timer.
+rm -f "$BUILDDIR/etc/xdg/autostart/arch-update-tray.desktop" 2>/dev/null || true
+install -d "$BUILDDIR/etc/systemd/user"
+ln -sf /dev/null "$BUILDDIR/etc/systemd/user/arch-update.timer" 2>/dev/null || true
+
+# --- 7. Cleanup for reproducible packaging.
 rm -rf "$BUILDDIR"/etc/pacman.d/gnupg/* 2>/dev/null || true
 find "$BUILDDIR" -exec touch --no-dereference --date="@$SOURCE_DATE_EPOCH" {} + 2>/dev/null || true
 
-# --- 7. Pack deterministically -> .wsl.
+# --- 8. Pack deterministically -> .wsl.
 OUT="$OUTPUTDIR/cachyos-v3-$IMAGE_VERSION"
 fakeroot -- tar \
   --numeric-owner --xattrs --acls \
