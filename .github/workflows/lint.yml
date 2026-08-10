@@ -1,0 +1,24 @@
+name: lint
+on: [push, pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: shellcheck
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          shellcheck scripts/*.sh scripts/lib/*.sh rootfs/usr/lib/wsl/first-setup.sh rootfs/usr/lib/wsl/optimize-repos
+      - name: actionlint
+        uses: rhysd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca # v1.7.12
+  docs:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install linters
+        run: pacman -Syu --needed --noconfirm codespell markdownlint
+      - uses: actions/checkout@v7
+      - name: codespell
+        run: codespell
+      - name: markdownlint
+        run: mdl --style .mdl_style.rb .

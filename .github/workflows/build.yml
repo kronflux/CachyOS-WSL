@@ -1,0 +1,97 @@
+name: build
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/**", "scripts/**", "rootfs/**", "packages/**", "tests/**", "Makefile"]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      image_version:
+        description: "Image version string (defaults to date.run_number)"
+        type: string
+        required: false
+
+# Build executes target packages in a --privileged container; grant it only
+# read access so a reusable-workflow caller cannot lend it write/id-token.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: cachyos/cachyos:latest
+      options: --privileged
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Install build tooling
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel git fakechroot fakeroot jq xz python \
+            bats bats-support bats-assert
+      - name: Ensure pacman keyring
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux cachyos
+      - name: Unit tests
+        run: make unit
+      - name: Build
+        env:
+          CACHYWSL_WORKDIR: /var/tmp/cachywsl
+          IMAGE_VERSION_IN: ${{ inputs.image_version }}
+        run: |
+          ver="${IMAGE_VERSION_IN:-$(date -u +%Y.%m.%d).${{ github.run_number }}}"
+          if [[ ! "$ver" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]+$ ]]; then
+            echo "::error::invalid IMAGE_VERSION '$ver' (expected YYYY.MM.DD.N)"; exit 1
+          fi
+          echo "IMAGE_VERSION=$ver" >> "$GITHUB_ENV"
+          make build IMAGE_VERSION="$ver"
+      - name: Validate rootfs
+        env:
+          CACHYWSL_WORKDIR: /var/tmp/cachywsl
+        run: make validate
+      - name: Functional test
+        env:
+          CACHYWSL_WORKDIR: /var/tmp/cachywsl
+        run: make test
+      - name: Microsoft WSL image validation
+        env:
+          CACHYWSL_WORKDIR: /var/tmp/cachywsl
+        run: make validate-microsoft IMAGE_VERSION="$IMAGE_VERSION"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: cachyos
+          path: |
+            output/cachyos-*.wsl
+            output/cachyos-*.wsl.sha256
+          if-no-files-found: error
+
+  # Runs first-run repository optimization on the built image, the step every
+  # install performs, so a broken switch fails CI instead of a user's setup.
+  test-optimize:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download image
+        uses: actions/download-artifact@v8
+        with:
+          name: cachyos
+      - name: Switch the image to the optimized repositories
+        run: |
+          xz -dc cachyos-*.wsl | docker import - cachyos-wsl
+          docker run --rm --privileged cachyos-wsl /usr/bin/bash -euc '
+            pacman-key --init
+            pacman-key --populate archlinux cachyos
+            /usr/lib/wsl/optimize-repos
+            grep -Eq "^\[cachyos-(v3|v4|znver4)\]$" /etc/pacman.conf
+            grep -q "^ID=cachyos" /etc/os-release
+            pacman -Q zlib-ng-compat sudo fish
+            for f in /usr/share/libalpm/hooks/cachyos-plymouth-initramfs.hook \
+                     /usr/share/libalpm/hooks/cachyos-reboot-required.hook \
+                     /etc/xdg/autostart/arch-update-tray.desktop; do
+              if [ -e "$f" ]; then echo "reinstalled despite NoExtract: $f"; exit 1; fi
+            done
+          '
