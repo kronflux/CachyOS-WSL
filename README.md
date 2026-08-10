@@ -65,10 +65,66 @@ Try it in WSL (run from a Windows terminal / PowerShell). Use
 
 ```powershell
 wsl --install --from-file output\cachyos-v3-<version>.wsl
-# first launch runs the OOBE (creates your user, detects locale, inits keyring)
+# first launch runs the OOBE (detects locale, inits keyring, updates packages, creates your user)
 ```
 
 `wsl --import` also works but is the legacy path that does **not** run the OOBE —
 you'll land at a root shell; run `sudo /usr/lib/wsl/oobe.sh` yourself to finish
 setup. To remove a test install: `wsl --unregister CachyOS` (or the name you gave).
 
+## Unattended first-run (scripted deploys)
+
+The OOBE (`/usr/lib/wsl/oobe.sh`) can run without prompts if an optional local
+config exists at `/etc/wsl/oobe.conf`. It is purely local — read straight off
+disk, no network call, no cloud service, no cloud-init dependency.
+
+Format is `key = value`, one per line, `#` for comments:
+
+```
+username = dev
+groups = wheel,video,audio
+shell = /usr/bin/fish
+locale = en-US
+run_update = yes
+```
+
+| Key | Required | Default | Notes |
+| --- | --- | --- | --- |
+| `username` | yes (to trigger unattended mode) | — | Validated (lowercase, starts with letter/`_`, max 32 chars, not a system name). An invalid or missing username leaves a root shell for manual setup. |
+| `groups` | no | `sys,network,rfkill,users,video,storage,lp,audio,wheel` | Comma-separated; unknown groups are skipped. |
+| `shell` | no | `/usr/bin/fish` | Login shell for the created user. |
+| `locale` | no | `en-US` | Windows-culture-style locale, mapped to a glibc locale. |
+| `run_update` | no | `yes` | `yes`/`no`; the OOBE runs `pacman -Syu --noconfirm` automatically (interactive and unattended alike). Set `no` to skip it. |
+
+When a valid `username` is present, the OOBE creates the user, sets it as the
+WSL default user, and applies the other keys with no prompts. The deployer
+sets the user's password out-of-band (unattended mode does not prompt for
+one) — e.g. via `wsl -d CachyOS -u root -- passwd <user>` after first launch.
+
+To inject the config, register the image without auto-launching it
+(`--no-launch`), write the file as root, then launch — the interactive
+launch is what triggers the OOBE command:
+
+```powershell
+wsl --install --from-file cachyos-v3-<version>.wsl --no-launch
+wsl -d CachyOS -u root -- sh -c 'mkdir -p /etc/wsl && cat > /etc/wsl/oobe.conf' < oobe.conf
+wsl -d CachyOS   # first interactive launch now runs unattended
+```
+
+Alternatively, bake `/etc/wsl/oobe.conf` into a derived image built on top of
+this one.
+
+## Documentation
+
+- **Reproducibility & signature verification:** [`docs/REPRODUCIBILITY.md`](docs/REPRODUCIBILITY.md)
+- **Windows-side testing tooling:** [`windows/README.md`](windows/README.md)
+
+## Credits & lineage
+
+Built on the structure of the official
+[Arch Linux WSL](https://gitlab.archlinux.org/archlinux/archlinux-wsl) project,
+adapted for CachyOS using upstream CachyOS sources.
+
+## License
+
+[GPL-3.0](LICENSE).
