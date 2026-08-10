@@ -6,7 +6,7 @@ ROOT := $(shell pwd)
 CACHYWSL_WORKDIR ?= /var/tmp/cachywsl
 export CACHYWSL_WORKDIR
 
-.PHONY: build test validate unit lint clean
+.PHONY: build test validate validate-microsoft unit lint clean
 
 build:
 	./scripts/build-image.sh $(IMAGE_VERSION)
@@ -17,6 +17,9 @@ test:
 validate:
 	./scripts/validate-rootfs.sh $(CACHYWSL_WORKDIR)/build
 
+validate-microsoft:
+	./scripts/validate-microsoft.sh output/cachyos-$(IMAGE_VERSION).wsl
+
 unit:
 	bats tests/
 
@@ -25,4 +28,5 @@ lint:
 
 # Removes only what the build creates inside CACHYWSL_WORKDIR, never the directory itself.
 clean:
-	rm -rf workdir output "$(CACHYWSL_WORKDIR)/build" "$(CACHYWSL_WORKDIR)/pacman.conf"
+	rm -rf workdir output "$(CACHYWSL_WORKDIR)/build" "$(CACHYWSL_WORKDIR)/pacman.conf" \
+	  "$(CACHYWSL_WORKDIR)/microsoft-wsl" "$(CACHYWSL_WORKDIR)/microsoft-wsl-venv"
