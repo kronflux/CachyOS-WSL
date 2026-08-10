@@ -1,0 +1,23 @@
+{
+  "profiles": [
+    {
+      "colorScheme": "CachyOS",
+      "font": { "face": "CaskaydiaCove Nerd Font" },
+      "opacity": 90,
+      "useAcrylic": true
+    }
+  ],
+  "schemes": [
+    {
+      "name": "CachyOS",
+      "background": "#0C0F12",
+      "foreground": "#D4D4D4",
+      "black": "#1B1F23",  "red": "#E06C75",   "green": "#2EA043",
+      "yellow": "#E5C07B", "blue": "#3B82F6",  "purple": "#C678DD",
+      "cyan": "#56B6C2",   "white": "#D4D4D4",
+      "brightBlack": "#5C6370", "brightRed": "#E06C75", "brightGreen": "#2EA043",
+      "brightYellow": "#E5C07B", "brightBlue": "#61AFEF", "brightPurple": "#C678DD",
+      "brightCyan": "#56B6C2", "brightWhite": "#FFFFFF"
+    }
+  ]
+}
