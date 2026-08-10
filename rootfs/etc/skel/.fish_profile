@@ -1,0 +1,9 @@
+# Sourced by cachyos-config.fish after the bundled `done` plugin loads.
+#
+# `done` notifies when a long command finishes. Under WSL there is no
+# notification daemon, so it falls back to a Windows toast whose ToastText02
+# XML interpolates the raw command line without escaping: any command
+# containing <, >, or & yields malformed XML (0xC00CE56D) and a PowerShell
+# exception. It also spawns powershell.exe on every long command to probe
+# window focus. Remove its event handlers so it stays silent and idle.
+functions -e __done_started __done_ended
