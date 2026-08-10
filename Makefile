@@ -6,10 +6,16 @@ ROOT := $(shell pwd)
 CACHYWSL_WORKDIR ?= /var/tmp/cachywsl
 export CACHYWSL_WORKDIR
 
-.PHONY: build unit lint clean
+.PHONY: build test validate unit lint clean
 
 build:
 	./scripts/build-image.sh $(IMAGE_VERSION)
+
+test:
+	./scripts/test-image.sh
+
+validate:
+	./scripts/validate-rootfs.sh $(CACHYWSL_WORKDIR)/build
 
 unit:
 	bats tests/
