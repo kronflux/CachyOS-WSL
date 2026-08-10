@@ -1,0 +1,63 @@
+name: build
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/**", "scripts/**", "rootfs/**", "packages/**", "vendor/**", "Makefile"]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      image_version:
+        description: "Image version string (defaults to date.run_number)"
+        type: string
+        required: false
+
+# Build executes target packages in a --privileged container; grant it only
+# read access so a reusable-workflow caller cannot lend it write/id-token.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      # CachyOS image: its patched pacman accepts the x86_64_v3 hwcaps repos
+      # (stock Arch pacman rejects them: "package architecture is not valid").
+      image: cachyos/cachyos:latest
+      options: --privileged
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - name: Install build tooling
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel git fakechroot fakeroot arch-install-scripts jq xz bats
+      - name: Ensure pacman keyring
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux cachyos
+      - name: Verify vendored assets
+        run: ./scripts/verify-vendor.sh
+      - name: Build
+        env:
+          CACHYWSL_WORKDIR: /var/tmp/cachywsl
+          IMAGE_VERSION_IN: ${{ inputs.image_version }}
+        run: |
+          ver="${IMAGE_VERSION_IN:-$(date -u +%Y.%m.%d).${{ github.run_number }}}"
+          if [[ ! "$ver" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]+$ ]]; then
+            echo "::error::invalid IMAGE_VERSION '$ver' (expected YYYY.MM.DD.N)"; exit 1
+          fi
+          make build IMAGE_VERSION="$ver"
+      - name: Functional test
+        env:
+          CACHYWSL_WORKDIR: /var/tmp/cachywsl
+        run: make test
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: cachyos-v3
+          path: |
+            output/cachyos-v3-*.wsl
+            output/cachyos-v3-*.wsl.sha256
+          if-no-files-found: error
