@@ -1,0 +1,73 @@
+# --- Core system ---
+base
+base-devel
+sudo
+iptables-nft
+openssh
+git
+vim
+nano
+nano-syntax-highlighting
+micro
+cachyos-micro-settings
+man-db
+man-pages
+less
+diffutils
+e2fsprogs
+perl
+python
+bash-completion
+plocate
+pv
+lsb-release
+logrotate
+
+# --- CachyOS identity (pacman provides Architecture=auto) ---
+pacman
+archlinux-keyring
+cachyos-keyring
+cachyos-mirrorlist
+cachyos-v3-mirrorlist
+cachyos-v4-mirrorlist
+cachyos-hooks
+cachyos-settings
+cachyos-rate-mirrors
+
+# --- Shell experience (deps pull eza/bat/fzf/fastfetch/pure-prompt/oh-my-zsh/p10k) ---
+fish
+cachyos-fish-config
+zsh
+cachyos-zsh-config
+
+# --- CLI tools ---
+btop
+duf
+ripgrep
+fd
+inxi
+s-nail
+unzip
+unrar
+
+# --- Network CLI ---
+wget
+rsync
+bind
+inetutils
+
+# --- Firewall (installed, not enabled) ---
+ufw
+ufw-extras
+
+# --- Package tooling ---
+pacman-contrib
+pkgfile
+reflector
+rebuild-detector
+cachy-update
+
+# --- WSL parity (Ubuntu-WSL defaults with no CachyOS equivalent) ---
+tmux
+openbsd-netcat
+lsof
