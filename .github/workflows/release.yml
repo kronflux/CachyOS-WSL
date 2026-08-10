@@ -1,0 +1,94 @@
+name: release
+on:
+  push:
+    tags: ["20*"]
+  schedule:
+    # Monthly release, on the 1st at 06:00 UTC
+    - cron: "0 6 1 * *"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (YYYY.MM.DD.N); empty uses today's date and the run number"
+        required: false
+
+# Least privilege: the reusable build job runs read-only (enough to check out the
+# repo); only the release job gets the write + id-token scopes to sign and publish.
+permissions:
+  contents: read
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Resolve tag
+        id: tag
+        env:
+          RAW_TAG: ${{ github.event_name == 'push' && github.ref_name || github.event.inputs.tag }}
+        run: |
+          [ -n "$RAW_TAG" ] || RAW_TAG="$(date -u +%Y.%m.%d).${GITHUB_RUN_NUMBER}"
+          # Validate before use — the tag reaches shell steps below; a ref name
+          # or dispatch input containing shell metacharacters must not execute.
+          if [[ ! "$RAW_TAG" =~ ^20[0-9]{2}\.[0-9]{2}\.[0-9]{2}\.[0-9]+$ ]]; then
+            echo "::error::Invalid release tag '$RAW_TAG' (expected YYYY.MM.DD.N)"
+            exit 1
+          fi
+          printf 'tag=%s\n' "$RAW_TAG" >> "$GITHUB_OUTPUT"
+  build:
+    needs: tag
+    uses: ./.github/workflows/build.yml
+    with:
+      image_version: ${{ needs.tag.outputs.tag }}
+  release:
+    needs: [tag, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      TAG: ${{ needs.tag.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Download image
+        uses: actions/download-artifact@v8
+        with:
+          name: cachyos
+          path: dist
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.3
+      - name: Sign image (keyless)
+        working-directory: dist
+        run: cosign sign-blob --yes --bundle "cachyos-$TAG.wsl.bundle" "cachyos-$TAG.wsl"
+      - name: Verify the signature against the documented identity
+        working-directory: dist
+        run: |
+          cosign verify-blob "cachyos-$TAG.wsl" --bundle "cachyos-$TAG.wsl.bundle" \
+            --certificate-identity-regexp '^https://github\.com/kronflux/CachyOS-WSL/\.github/workflows/release\.yml@refs/(heads/main|tags/20[0-9.]+)$' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      - name: Generate DistributionInfo.json
+        run: ./scripts/gen-distribution-info.sh "$TAG" dist > dist/DistributionInfo.json
+      - name: Release body
+        run: |
+          {
+            echo '### sha256'
+            echo '```'
+            cat dist/*.wsl.sha256
+            echo '```'
+            echo '### verify'
+            echo '```'
+            echo "cosign verify-blob cachyos-$TAG.wsl --bundle cachyos-$TAG.wsl.bundle \\"
+            echo "  --certificate-identity-regexp '^https://github\.com/kronflux/CachyOS-WSL/\.github/workflows/release\.yml@refs/(heads/main|tags/20[0-9.]+)$' \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
+            echo '```'
+          } > body.md
+      - name: Publish release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifactErrorsFailBuild: true
+          tag: ${{ needs.tag.outputs.tag }}
+          commit: ${{ github.sha }}
+          bodyFile: body.md
+          artifacts: "dist/*.wsl,dist/*.wsl.sha256,dist/*.wsl.bundle,dist/DistributionInfo.json,windows/register-distribution.ps1"
