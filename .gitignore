@@ -1,0 +1,18 @@
+# Build working directories & artifacts
+workdir/
+output/
+*.wsl
+*.wsl.SHA256
+*.wsl.bundle
+*.sha256
+*.tar
+*.tar.*
+
+# Editor / OS cruft
+*.swp
+.DS_Store
+
+# Local working notes & planning artifacts
+known-issues.md
+.superpowers/
+context-snapshot.json
