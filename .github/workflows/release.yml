@@ -77,4 +77,4 @@ jobs:
           artifactErrorsFailBuild: true
           tag: ${{ steps.tag.outputs.tag }}
           bodyFile: body.md
-          artifacts: "dist/*.wsl,dist/*.wsl.sha256,dist/*.wsl.bundle,dist/DistributionInfo.json"
+          artifacts: "dist/*.wsl,dist/*.wsl.sha256,dist/*.wsl.bundle,dist/DistributionInfo.json,windows/register-distribution.ps1"
