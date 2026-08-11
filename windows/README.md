@@ -1,37 +1,43 @@
-# Windows-side testing tooling
+# Windows-side helpers
 
-PowerShell helpers for **local, pre-release testing** of a CachyOS `.wsl` image
-on Windows — for use **before** a public GitHub Release exists (once a release
-is published, you install the normal way and don't need these).
-
-> Runtime note: these scripts run on Windows PowerShell 5.1+ / PowerShell 7+.
-> They make **no network calls**, handle **no credentials**, and contain **no
-> secrets**.
+PowerShell helpers for installing CachyOS on Windows and styling the terminal.
+They run on Windows PowerShell 5.1+ / PowerShell 7+.
 
 ## Scripts
 
-### `override-manifest.ps1` — register a local `.wsl` with WSL
+### `register-distribution.ps1` — register CachyOS with WSL and install it
 
-Points WSL's distribution-list URL at a local manifest describing your freshly
-built image, so you can install it through the normal `wsl --install <name>`
-flow as `CachyOS-local`.
+Adds CachyOS to the WSL distribution list via the `DistributionListUrlAppend`
+registry value (**append**, so Microsoft's online list is preserved), ensures
+WSL 2 is installed and the default version, then runs `wsl --install CachyOS`.
 
-- **Must be run in an ELEVATED PowerShell** ("Run as administrator"). It writes
-  a single value under `HKLM`, so it checks for Administrator up front and exits
-  with guidance if not elevated.
-- The registry write is a single named value and is fully reversible.
+- **Self-elevating** — it relaunches itself under UAC (writing `HKLM` and
+  installing WSL need Administrator). Works both as a saved file and via
+  `irm … | iex`.
+- **WSL 2** — installs WSL if absent (flagging a required reboot) and sets the
+  default version to 2, switching a v1 default over.
+- Reports each step and closes with a summary; the only writes are the Lxss
+  registry value and, for `-Local`, a manifest under `%ProgramData%\CachyWSL`.
 
-```powershell
-# Elevated PowerShell, at the repo root:
-.\windows\override-manifest.ps1 -WslPath output\cachyos-v3-<version>.wsl
-wsl --install CachyOS-local
-```
-
-**Undo** (removes the override; WSL reverts to the default online list):
+Published release (default):
 
 ```powershell
-Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss' -Name 'DistributionListUrl'
+# Elevates itself; installs the latest signed release as `CachyOS`.
+.\windows\register-distribution.ps1
+
+# One-paste equivalent (uses defaults; advanced flags need the downloaded script):
+irm https://github.com/kronflux/CachyOS-WSL/releases/latest/download/register-distribution.ps1 | iex
 ```
+
+Local build (pre-release testing):
+
+```powershell
+.\windows\register-distribution.ps1 -Local output\cachyos-v3-<version>.wsl
+```
+
+Options: `-Local <path>` register a locally-built `.wsl` instead of the published
+list · `-NoInstall` set up the list but skip `wsl --install` · `-Remove` undo the
+registry change and revert to the stock online list.
 
 ### `setup-terminal.ps1` — apply the CachyOS Windows Terminal look
 
@@ -49,35 +55,30 @@ name starts with `CachyOS`.
 .\windows\setup-terminal.ps1
 ```
 
-**Undo** — restore the backup it created (the exact path is printed when it
-runs):
+**Undo** — restore the backup it created (the exact path is printed when it runs):
 
 ```powershell
 Copy-Item "<settings.json path>.bak" "<settings.json path>" -Force
 ```
 
-## End-to-end flow
+## End-to-end (local build)
 
 1. **Build a `.wsl`** on your CachyOS/Arch (WSL) build host — see the repo
    [`README.md`](../README.md):
    ```bash
    make build     # -> output/cachyos-v3-<version>.wsl
    ```
-2. **Register it** for testing (elevated PowerShell, repo root):
+2. **Register and install it** (the script elevates itself):
    ```powershell
-   .\windows\override-manifest.ps1 -WslPath output\cachyos-v3-<version>.wsl
+   .\windows\register-distribution.ps1 -Local output\cachyos-v3-<version>.wsl
    ```
-3. **Install** it:
-   ```powershell
-   wsl --install CachyOS-local
-   ```
-4. *(optional)* **Style Windows Terminal**:
+3. *(optional)* **Style Windows Terminal**:
    ```powershell
    .\windows\setup-terminal.ps1
    ```
-5. **Test**, then **undo**:
+4. **Test**, then **undo**:
    ```powershell
-   wsl --unregister CachyOS-local
-   Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss' -Name 'DistributionListUrl'
+   wsl --unregister CachyOS
+   .\windows\register-distribution.ps1 -Remove
    # and, if you ran setup-terminal.ps1, restore settings.json from its .bak
    ```
