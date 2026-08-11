@@ -27,7 +27,26 @@ Higher microarchitecture levels (x86-64-v4/AVX-512, Zen4) are intentionally not
 shipped: they exclude most current consumer CPUs (Intel dropped AVX-512 from 12th-gen
 Core onward) while giving a terminal userland no measurable benefit.
 
-Install it from a Release (WSL 2.4.4+):
+**Recommended — add CachyOS to `wsl --install`.** Append it to WSL's distribution
+list (the stock online list is preserved) from an **Administrator** PowerShell,
+then install by name:
+
+```powershell
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss" /v DistributionListUrlAppend /t REG_SZ /d "https://github.com/kronflux/CachyOS-WSL/releases/latest/download/DistributionInfo.json" /f
+wsl --install CachyOS
+```
+
+Or let the helper handle elevation, WSL 2 setup, and registration for you:
+
+```powershell
+irm https://github.com/kronflux/CachyOS-WSL/releases/latest/download/register-distribution.ps1 | iex
+```
+
+`irm | iex` runs a fetched script; if you'd rather not, download
+[`windows/register-distribution.ps1`](windows/register-distribution.ps1) and run it
+directly, or use the `reg add` line above.
+
+**Alternative — install the image file directly** (no registry, WSL 2.4.4+):
 
 ```powershell
 wsl --install --from-file cachyos-v3-<version>.wsl
@@ -41,7 +60,13 @@ cosign verify-blob cachyos-v3-<version>.wsl --bundle cachyos-v3-<version>.wsl.bu
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-For **local testing before a release** (register a locally-built `.wsl`), see [`windows/`](windows/) — an elevated PowerShell registry-override helper.
+**Testing a local build** (before a release exists): register a freshly-built
+`.wsl` with [`windows/register-distribution.ps1`](windows/register-distribution.ps1),
+then remove the entry with `-Remove` when done:
+
+```powershell
+.\windows\register-distribution.ps1 -Local output\cachyos-v3-<version>.wsl
+```
 
 ## Build & try it
 
@@ -117,7 +142,7 @@ this one.
 ## Documentation
 
 - **Reproducibility & signature verification:** [`docs/REPRODUCIBILITY.md`](docs/REPRODUCIBILITY.md)
-- **Windows-side testing tooling:** [`windows/README.md`](windows/README.md)
+- **Windows install & terminal helpers:** [`windows/README.md`](windows/README.md)
 
 ## Credits & lineage
 
