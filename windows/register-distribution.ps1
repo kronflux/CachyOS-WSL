@@ -5,7 +5,7 @@
 
 .DESCRIPTION
     Adds CachyOS to the WSL distribution list via the DistributionListUrlAppend
-    registry value (append, not override — the stock online list is preserved),
+    registry value (append, not override -- the stock online list is preserved),
     ensures WSL 2 is installed and the default version, then runs
     `wsl --install CachyOS`.
 
@@ -40,7 +40,8 @@
 param(
     [string]$Local,
     [switch]$Remove,
-    [switch]$NoInstall
+    [switch]$NoInstall,
+    [switch]$Elevated   # internal: set on the UAC relaunch
 )
 
 Set-StrictMode -Version Latest
@@ -56,25 +57,27 @@ $LocalInfo    = Join-Path $LocalDir 'DistributionInfo.json'
 $DistroName   = 'CachyOS'
 
 # --- self-elevate -------------------------------------------------------------
+$HostExe  = (Get-Process -Id $PID).Path
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $isAdmin  = ([Security.Principal.WindowsPrincipal]$identity).IsInRole(
     [Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
-    $hostExe = (Get-Process -Id $PID).Path
     $psArgs  = @('-NoProfile', '-ExecutionPolicy', 'Bypass')
     if ($PSCommandPath) {
-        $psArgs += @('-File', $PSCommandPath)
+        $psArgs += @('-File', $PSCommandPath, '-Elevated')
         if ($Local)     { $psArgs += @('-Local', $Local) }
         if ($Remove)    { $psArgs += '-Remove' }
         if ($NoInstall) { $psArgs += '-NoInstall' }
     } else {
         # Running in-memory (irm | iex): re-fetch inside the elevated session.
-        $psArgs += @('-Command', "irm $SelfUrl | iex")
+        $psArgs += @('-Command', "`$env:CACHYWSL_ELEVATED='1'; irm $SelfUrl | iex")
     }
-    try { Start-Process -FilePath $hostExe -Verb RunAs -ArgumentList $psArgs }
+    try { Start-Process -FilePath $HostExe -Verb RunAs -ArgumentList $psArgs }
     catch { Write-Host "Elevation was declined. Re-run from an Administrator PowerShell." -ForegroundColor Yellow }
     return
 }
+# True when this is the (transient) window our own UAC relaunch opened.
+$IsRelaunched = [bool]$Elevated -or ($env:CACHYWSL_ELEVATED -eq '1')
 
 # --- palette (same family as the Linux OOBE; degrades without a VT console) ----
 try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new() } catch {}
@@ -123,9 +126,79 @@ function Write-SummaryBox([object[]]$rows) {
     Write-Host ("$TEAL$BBL" + ([string]($BH) * $w) + "$BBR$R")
 }
 function Pause-Exit([int]$code) {
-    Write-Host ''
-    if ([Environment]::UserInteractive) { [void](Read-Host 'Press Enter to close') }
+    # Only the window our own UAC relaunch opened needs to be held open to be
+    # read; a session the user already had stays put on its own.
+    if ($script:IsRelaunched -and [Environment]::UserInteractive) {
+        Write-Host ''
+        [void](Read-Host 'Press Enter to close')
+    }
     exit $code
+}
+
+function Initialize-Wsl2 {
+    # Provision the WSL 2 prerequisites in place. Emits a dim note only when it
+    # changes something or hits a blocker; otherwise silent. Returns one of
+    # 'ready' | 'reboot' | 'blocked'.
+    $reboot = $false
+    $sys = Join-Path $env:SystemRoot 'System32'
+
+    $os = Get-CimInstance Win32_OperatingSystem
+    if ([int]$os.BuildNumber -lt 19041) {
+        Write-Note "Windows build $($os.BuildNumber) is below 19041; update Windows first."; return 'blocked'
+    }
+    $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+    if ($arch -ne 'AMD64' -and $arch -ne 'ARM64') {
+        Write-Note "Unsupported CPU architecture ($arch); WSL 2 needs x64 or arm64."; return 'blocked'
+    }
+
+    # virtualization / hypervisor launch policy
+    if (-not (Get-CimInstance Win32_ComputerSystem).HypervisorPresent) {
+        $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+        if (-not $cpu.VirtualizationFirmwareEnabled -and -not $cpu.SecondLevelAddressTranslationExtensions) {
+            Write-Note 'Enable virtualization (Intel VT-x / AMD-V) in your BIOS/UEFI, then re-run.'; return 'blocked'
+        }
+        $bcd = Join-Path $sys 'bcdedit.exe'
+        if (((& $bcd /enum '{current}' 2>$null) -join "`n") -match '(?im)^\s*hypervisorlaunchtype\s+Off\s*$') {
+            & $bcd /set '{current}' hypervisorlaunchtype Auto | Out-Null
+            Write-Note 'Enabled the hypervisor launch type (restart required).'; $reboot = $true
+        }
+    }
+
+    # optional features
+    foreach ($feat in @('Microsoft-Windows-Subsystem-Linux', 'VirtualMachinePlatform')) {
+        $f = Get-WindowsOptionalFeature -Online -FeatureName $feat -ErrorAction SilentlyContinue
+        if (-not $f) { Write-Note "Could not query the $feat feature."; return 'blocked' }
+        if ($f.State -ne 'Enabled') {
+            if ($f.State -eq 'DisabledWithPayloadRemoved') {
+                Write-Note "$feat is unavailable on this image (payload removed)."; return 'blocked'
+            }
+            Enable-WindowsOptionalFeature -Online -FeatureName $feat -All -NoRestart -ErrorAction SilentlyContinue | Out-Null
+            Write-Note "Enabled $feat (restart required)."; $reboot = $true
+        }
+    }
+
+    # supporting services must not be Disabled
+    foreach ($svc in @('HvHost', 'vmcompute', 'LxssManager', 'WslService')) {
+        $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
+        if ($s -and $s.StartType -eq 'Disabled') {
+            Set-Service -Name $svc -StartupType Manual -ErrorAction SilentlyContinue
+            Write-Note "Re-enabled the $svc service."
+        }
+    }
+
+    if ($reboot) { return 'reboot' }
+
+    # WSL runtime package
+    & wsl.exe --status 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Note 'Installing the WSL runtime...'
+        & wsl.exe --install --no-distribution 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Note 'wsl --install failed; run "wsl --install" manually, then re-run.'; return 'blocked' }
+        return 'reboot'
+    }
+
+    & wsl.exe --set-default-version 2 2>&1 | Out-Null   # switches a v1 default over
+    return 'ready'
 }
 
 # --- remove mode --------------------------------------------------------------
@@ -148,77 +221,83 @@ Write-Banner 'CachyOS on WSL' 'Windows setup'
 # --- 1. elevation (guaranteed by the self-elevate above) ----------------------
 Write-Step 'Administrator' 'elevated' 'ok'
 
-# --- 2. ensure WSL 2 ----------------------------------------------------------
-$wslOk = $false; $rebootNeeded = $false; $wslState = 'ready'
-$wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
-if ($wsl) { & wsl.exe --status 2>&1 | Out-Null; if ($LASTEXITCODE -eq 0) { $wslOk = $true } }
-if (-not $wslOk) {
-    Write-Note 'WSL not detected — installing (this may require a reboot)...'
-    & wsl.exe --install --no-distribution 2>&1 | Out-Null
-    if ($LASTEXITCODE -eq 0) { $rebootNeeded = $true; $wslState = 'installed' }
-    else { $wslState = 'install failed' }
+# --- 2. WSL 2 prerequisites (virtualization, features, services, runtime) -----
+$wslState     = Initialize-Wsl2
+$rebootNeeded = ($wslState -eq 'reboot')
+$wslFailed    = ($wslState -eq 'blocked')
+Write-Step 'WSL 2 runtime' `
+    $(switch ($wslState) { 'ready' { 'ready' } 'reboot' { 'reboot needed' } default { 'blocked' } }) `
+    $(switch ($wslState) { 'ready' { 'ok' }    'reboot' { 'skip' }          default { 'fail' } })
+if ($wslFailed) {
+    Write-SummaryBox @(
+        @('Administrator', $true),
+        @('WSL 2 runtime', $false),
+        @('CachyOS registered', $false),
+        @('CachyOS installed', $false))
+    Write-Host ''
+    Write-Host " $RED`Blocked.$R WSL 2 prerequisites are not satisfied -- see the log above."
+    Pause-Exit 1
 }
-# make WSL 2 the default so CachyOS installs as v2 (switches v1 defaults over)
-& wsl.exe --set-default-version 2 2>&1 | Out-Null
-Write-Step 'WSL 2 runtime' $wslState $(if ($wslState -eq 'install failed') { 'fail' } else { 'ok' })
 
-if ($rebootNeeded) {
-    Write-Note 'WSL was just installed. Reboot Windows, then run this script again to finish.'
-}
-
-# --- 3. register the distribution list ----------------------------------------
-$regValue = $DistUrl
+# --- 3. register (published) or resolve the local image -----------------------
+# The distribution list points at a *downloadable* URL, so a local build is
+# installed directly with --from-file instead of through the list.
 if ($Local) {
     if (-not (Test-Path -LiteralPath $Local -PathType Leaf)) {
-        Write-Step 'Register CachyOS' 'file not found' 'fail'
+        Write-Step 'Local image' 'not found' 'fail'
         Write-Note "No such .wsl: $Local"
         Pause-Exit 1
     }
     $wslFull = (Resolve-Path -LiteralPath $Local).Path
-    $sha = (Get-FileHash -LiteralPath $wslFull -Algorithm SHA256).Hash.ToLower()
-    New-Item -ItemType Directory -Force -Path $LocalDir | Out-Null
-    $info = [ordered]@{ ModernDistributions = [ordered]@{ CachyOS = @(
-        [ordered]@{
-            Name         = $DistroName
-            FriendlyName = 'CachyOS (local build)'
-            Default      = $true
-            Amd64Url     = [ordered]@{ Url = $wslFull; Sha256 = $sha }
-        }) } }
-    $info | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $LocalInfo -Encoding UTF8
-    $regValue = $LocalInfo
+    # drop any stale append so the list can't point at a now-missing image
+    Remove-ItemProperty -Path $RegPath -Name $AppendName -ErrorAction SilentlyContinue
+    if (Test-Path $LocalInfo) { Remove-Item $LocalInfo -Force -ErrorAction SilentlyContinue }
+    Write-Step 'Local image' (Split-Path $wslFull -Leaf) 'ok'
+} else {
+    New-ItemProperty -Path $RegPath -Name $AppendName -Value $DistUrl -PropertyType String -Force | Out-Null
+    Write-Step 'Register CachyOS' 'list appended' 'ok'
 }
-New-ItemProperty -Path $RegPath -Name $AppendName -Value $regValue -PropertyType String -Force | Out-Null
-Write-Step 'Register CachyOS' $(if ($Local) { 'local build' } else { 'list appended' }) 'ok'
 
-# --- 4. install ---------------------------------------------------------------
+# --- 4. install (without launching; first-run setup is handed off below) ------
 $installed = $false
 if ($rebootNeeded) {
     Write-Step 'Install CachyOS' 'after reboot' 'skip'
 } elseif ($NoInstall) {
     Write-Step 'Install CachyOS' 'skipped' 'skip'
-    Write-Note "Run it yourself with:  wsl --install $DistroName"
 } else {
     Write-Host ''
-    Write-Host " $DIM`Running: wsl --install $DistroName$R"
-    Write-Host ''
-    & wsl.exe --install $DistroName
+    if ($Local) { & wsl.exe --install --from-file "$wslFull" --no-launch }
+    else        { & wsl.exe --install $DistroName --no-launch }
     $installed = ($LASTEXITCODE -eq 0)
+    Write-Host ''
     Write-Step 'Install CachyOS' $(if ($installed) { 'installed' } else { 'see output' }) $(if ($installed) { 'ok' } else { 'fail' })
 }
 
-# --- summary ------------------------------------------------------------------
+# --- finish -------------------------------------------------------------------
+# On a fresh install, hand straight off to first-run setup so the step report
+# above is the last thing shown before the OOBE takes over: no trailing summary
+# box, and no key press to "complete" the script.
+if ($installed -and -not $rebootNeeded) {
+    Write-Host ''
+    Write-Host " $GN`Installed.$R Starting first-run setup..."
+    Write-Host ''
+    & wsl.exe -d $DistroName
+    exit 0
+}
+
 Write-SummaryBox @(
     @('Administrator', $true),
-    @('WSL 2 runtime', ($wslState -ne 'install failed')),
-    @('CachyOS registered', $true),
+    @('WSL 2 runtime', (-not $wslFailed)),
+    @($(if ($Local) { 'Local image ready' } else { 'CachyOS registered' }), $true),
     @('CachyOS installed', $installed)
 )
 Write-Host ''
-if ($installed) {
-    Write-Host " $GN`Ready.$R Launch it any time with:  wsl -d $DistroName"
-} elseif ($rebootNeeded) {
-    Write-Host " $BTEAL`Reboot required.$R After rebooting, re-run this script to install CachyOS."
+if ($rebootNeeded) {
+    Write-Host " $BTEAL`Reboot required.$R After restarting, re-run this to finish."
+} elseif ($NoInstall) {
+    if ($Local) { Write-Host " $BTEAL`Next:$R  wsl --install --from-file `"$wslFull`" --no-launch; wsl -d $DistroName" }
+    else        { Write-Host " $BTEAL`Next:$R  wsl --install $DistroName" }
 } else {
-    Write-Host " $BTEAL`Next:$R  wsl --install $DistroName"
+    Write-Host " $BTEAL`Next:$R  wsl -d $DistroName"
 }
 Pause-Exit 0

@@ -14,10 +14,13 @@ WSL 2 is installed and the default version, then runs `wsl --install CachyOS`.
 - **Self-elevating** — it relaunches itself under UAC (writing `HKLM` and
   installing WSL need Administrator). Works both as a saved file and via
   `irm … | iex`.
-- **WSL 2** — installs WSL if absent (flagging a required reboot) and sets the
-  default version to 2, switching a v1 default over.
-- Reports each step and closes with a summary; the only writes are the Lxss
-  registry value and, for `-Local`, a manifest under `%ProgramData%\CachyWSL`.
+- **WSL 2** — provisions the prerequisites in place: firmware virtualization and
+  `hypervisorlaunchtype`, the `Microsoft-Windows-Subsystem-Linux` and
+  `VirtualMachinePlatform` features, supporting services, the WSL runtime, and
+  the default version. It prints a line only when it changes something or hits a
+  blocker (e.g. virtualization disabled in BIOS), and flags a required restart.
+- Reports each step and closes with a summary. `-Local` installs the file
+  directly with `wsl --install --from-file` (no manifest, no download).
 
 Published release (default):
 
@@ -35,9 +38,10 @@ Local build (pre-release testing):
 .\windows\register-distribution.ps1 -Local output\cachyos-v3-<version>.wsl
 ```
 
-Options: `-Local <path>` register a locally-built `.wsl` instead of the published
-list · `-NoInstall` set up the list but skip `wsl --install` · `-Remove` undo the
-registry change and revert to the stock online list.
+Options: `-Local <path>` install a locally-built `.wsl` directly (via
+`--from-file`) instead of the published list · `-NoInstall` set up the list but
+skip the install · `-Remove` undo the registry change and revert to the stock
+online list.
 
 ### `setup-terminal.ps1` — apply the CachyOS Windows Terminal look
 
